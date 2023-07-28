@@ -39,7 +39,7 @@ func main() {
 	numIterations := 100
 
 	// Variables to store the predicted home prices for each iteration
-	avgPredictedPrices := make([]float64, len(testFeatures))
+	avgPredictedPricesLiner := make([]float64, len(testFeatures))
 
 	// Use a wait group to synchronize the goroutines
 	var wg sync.WaitGroup
@@ -60,36 +60,37 @@ func main() {
 
 			// Add the predicted home prices to the average for each feature
 			for j, price := range predictions {
-				avgPredictedPrices[j] += price / float64(numIterations)
+				avgPredictedPricesLiner[j] += price / float64(numIterations)
 			}
 
 			wg.Done()
 		}()
+
 	}
 
 	// Wait for all goroutines to finish
 	wg.Wait()
 
-	// Print the predicted home prices
-	fmt.Println("Average Predicted Home Prices:")
-	for _, price := range avgPredictedPrices {
+	// Print the predicted home prices using linear regression
+	fmt.Println("Average Predicted Home Prices using Linear Regression:")
+	for _, price := range avgPredictedPricesLiner {
 		fmt.Printf("%2f\n", price)
 	}
 
 	//Calculate and print the Mean Absolute Percentage Error (MAPE)
-	mape := meanAbsolutePercentageError(avgPredictedPrices, testTarget)
+	mape := meanAbsolutePercentageError(avgPredictedPricesLiner, testTarget)
 	fmt.Printf("Mean Absolute Percentage Error (MAPE): %.2f%%\n", mape)
 
 	// Calculate and print the Mean Squared Error (MSE)
-	mse := meanSquaredError(avgPredictedPrices, testTarget)
+	mse := meanSquaredError(avgPredictedPricesLiner, testTarget)
 	fmt.Printf("Mean Squared Error (MSE): %.2f\n", mse)
 
 	// Calculate and print the Root Mean Squared Error (RMSE)
-	rmse := rootMeanSquaredError(avgPredictedPrices, testTarget)
+	rmse := rootMeanSquaredError(avgPredictedPricesLiner, testTarget)
 	fmt.Printf("Root Mean Squared Error (RMSE): %.2f\n", rmse)
 
 	// Calculate and print the Root Mean Squared Percentage Error (RMSPE)
-	rmspe := rootMeanSquaredPercentageError(avgPredictedPrices, testTarget)
+	rmspe := rootMeanSquaredPercentageError(avgPredictedPricesLiner, testTarget)
 	fmt.Printf("Root Mean Squared Percentage Error (RMSPE): %.2f%%\n", rmspe)
 
 	// Calculate the time to run func main
