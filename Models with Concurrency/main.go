@@ -24,8 +24,8 @@ func main() {
 
 	// Print the loaded data
 	fmt.Println("Loaded Data:")
-	for _, row := range features {
-		fmt.Println(row)
+	for i, row := range features {
+		fmt.Printf("Row %d: %v\n", i, row)
 	}
 
 	// Split the data into training and test sets (70% training, 30% test)
@@ -35,41 +35,119 @@ func main() {
 	testFeatures := features[trainSize:]
 	testTarget := target[trainSize:]
 
+	// Add a constant term (intercept) to the features matrix
+	trainFeaturesWithConstant := make([][]float64, len(trainFeatures))
+	for i, row := range trainFeatures {
+		trainFeaturesWithConstant[i] = append([]float64{1}, row...)
+	}
+
+	testFeaturesWithConstant := make([][]float64, len(testFeatures))
+	for i, row := range testFeatures {
+		testFeaturesWithConstant[i] = append([]float64{1}, row...)
+	}
+
 	// Set up to run 100 iterations
 	numIterations := 100
 
-	// Variables to store the predicted home prices for each iteration
-	avgPredictedPricesLiner := make([]float64, len(testFeatures))
+	// Set the regularization parameter (lambda)
+	lambda := 0.1
 
-	// Use a wait group to synchronize the goroutines
+	// Set up a WaitGroup to ensure all Goroutines finish before proceeding
 	var wg sync.WaitGroup
+	wg.Add(numIterations * 2) // 2 iterations: linear and ridge
+
+	// Set up channels to communicate the results from each Goroutine
+	linearCoefficientsChannel := make(chan []float64, numIterations)
+	ridgeCoefficientsChannel := make(chan []float64, numIterations)
+
+	// Launch Goroutines for linear regression
+	for i := 0; i < numIterations; i++ {
+		go func() {
+			// Perform linear regression and send the coefficients to the channel
+			linearCoefficients := linearRegression(trainFeatures, trainTarget)
+			linearCoefficientsChannel <- linearCoefficients
+			wg.Done()
+		}()
+	}
+
+	// Launch Goroutines for ridge regression
+	for i := 0; i < numIterations; i++ {
+		go func() {
+			// Perform ridge regression and send the coefficients to the channel
+			ridgeCoefficients := ridgeRegression(trainFeatures, trainTarget, lambda)
+			ridgeCoefficientsChannel <- ridgeCoefficients
+			wg.Done()
+		}()
+	}
+
+	// Wait for all Goroutines for both linear and ridge regressions to finish
+	wg.Wait()
+
+	// Initialize variables to store the sum of coefficients for both linear and ridge
+	sumLinearCoefficients := make([]float64, len(trainFeatures[0])+1)
+	sumRidgeCoefficients := make([]float64, len(trainFeatures[0])+1)
+
+	// Receive the coefficients from the channels and accumulate the sum for both linear and ridge
+	for i := 0; i < numIterations; i++ {
+		linearCoefficients := <-linearCoefficientsChannel
+		ridgeCoefficients := <-ridgeCoefficientsChannel
+
+		for j := range linearCoefficients {
+			sumLinearCoefficients[j] += linearCoefficients[j]
+			sumRidgeCoefficients[j] += ridgeCoefficients[j]
+		}
+	}
+
+	// Calculate the average coefficients for both linear and ridge
+	avgLinearCoefficients := make([]float64, len(sumLinearCoefficients))
+	avgRidgeCoefficients := make([]float64, len(sumRidgeCoefficients))
+	for i := range sumLinearCoefficients {
+		avgLinearCoefficients[i] = sumLinearCoefficients[i] / float64(numIterations)
+		avgRidgeCoefficients[i] = sumRidgeCoefficients[i] / float64(numIterations)
+	}
+
+	// Variables to store the predicted home prices for each iteration
+	numTestSamples := len(testFeatures)
+	avgPredictedPricesLiner := make([]float64, numTestSamples)
+	avgPredictedPricesRidge := make([]float64, numTestSamples)
 
 	// Launch goroutines to run second machine learning model concurrently
 	// Run the prediction 100 times
 	for i := 0; i < numIterations; i++ {
-		wg.Add(1)
-		go func() {
-			// Perform linear regression
-			coefficients := linearRegression(trainFeatures, trainTarget)
 
-			// Make predictions on the test data
-			predictions := make([]float64, len(testFeatures))
-			for i, row := range testFeatures {
-				predictions[i] = predict(row, coefficients)
-			}
+		// Perform linear regression
+		coefficientsLin := linearRegression(trainFeatures, trainTarget)
 
-			// Add the predicted home prices to the average for each feature
-			for j, price := range predictions {
-				avgPredictedPricesLiner[j] += price / float64(numIterations)
-			}
+		// Make predictions on the test data
+		predictionsLin := make([]float64, len(testFeatures))
+		for j, row := range testFeatures {
+			predictionsLin[j] = predictLin(row, coefficientsLin)
+		}
 
-			wg.Done()
-		}()
+		// Add the predicted home prices to the average for each feature
+		for j, price := range predictionsLin {
+			avgPredictedPricesLiner[j] += price / float64(numIterations)
+		}
 
+		// Perform Ridge Regression
+		coefficientsRidge := ridgeRegression(trainFeatures, trainTarget, lambda)
+
+		// Make predictions Ridge
+		predictionsRidge := make([]float64, len(testFeatures))
+		for j, row := range testFeatures {
+			predictionsRidge[j] = predictRidge(row, coefficientsRidge)
+		}
+
+		// Add the predicted home prices to the average for each feature
+		for j, price := range predictionsRidge {
+			avgPredictedPricesRidge[j] += price / float64(numIterations)
+		}
+
+		// Take the log of the predictions Ridge
+		for i := range avgPredictedPricesRidge {
+			avgPredictedPricesRidge[i] = math.Log(avgPredictedPricesRidge[i])
+		}
 	}
-
-	// Wait for all goroutines to finish
-	wg.Wait()
 
 	// Print the predicted home prices using linear regression
 	fmt.Println("Average Predicted Home Prices using Linear Regression:")
@@ -77,21 +155,43 @@ func main() {
 		fmt.Printf("%2f\n", price)
 	}
 
+	// Print the predicted home prices using ridge regression
+	fmt.Println("Average Predicted Home Prices using Ridge Regression:")
+	for _, price := range avgPredictedPricesRidge {
+		fmt.Printf("%2f\n", price)
+	}
+
 	//Calculate and print the Mean Absolute Percentage Error (MAPE)
 	mape := meanAbsolutePercentageError(avgPredictedPricesLiner, testTarget)
 	fmt.Printf("Mean Absolute Percentage Error (MAPE): %.2f%%\n", mape)
+
+	//Calculate and print the Mean Absolute Percentage Error (MAPE) Ridge
+	mapeRidge := meanAbsolutePercentageError(avgPredictedPricesRidge, testTarget)
+	fmt.Printf("Mean Absolute Percentage Error (MAPE) Ridge: %.2f%%\n", mapeRidge)
 
 	// Calculate and print the Mean Squared Error (MSE)
 	mse := meanSquaredError(avgPredictedPricesLiner, testTarget)
 	fmt.Printf("Mean Squared Error (MSE): %.2f\n", mse)
 
+	// Calculate and print the Mean Squared Error (MSE) Ridge
+	mseRidge := meanSquaredError(avgPredictedPricesRidge, testTarget)
+	fmt.Printf("Mean Squared Error (MSE): %.2f\n", mseRidge)
+
 	// Calculate and print the Root Mean Squared Error (RMSE)
 	rmse := rootMeanSquaredError(avgPredictedPricesLiner, testTarget)
 	fmt.Printf("Root Mean Squared Error (RMSE): %.2f\n", rmse)
 
+	// Calculate and print the Root Mean Squared Error (RMSE) Ridge
+	rmseRidge := rootMeanSquaredError(avgPredictedPricesRidge, testTarget)
+	fmt.Printf("Root Mean Squared Error (RMSE): %.2f\n", rmseRidge)
+
 	// Calculate and print the Root Mean Squared Percentage Error (RMSPE)
 	rmspe := rootMeanSquaredPercentageError(avgPredictedPricesLiner, testTarget)
 	fmt.Printf("Root Mean Squared Percentage Error (RMSPE): %.2f%%\n", rmspe)
+
+	// Calculate and print the Root Mean Squared Percentage Error (RMSPE) Ridge
+	rmspeRidge := rootMeanSquaredPercentageError(avgPredictedPricesRidge, testTarget)
+	fmt.Printf("Root Mean Squared Percentage Error (RMSPE): %.2f%%\n", rmspeRidge)
 
 	// Calculate the time to run func main
 	duration := time.Since(startTime)
@@ -131,9 +231,11 @@ func loadCSV(filename string) ([][]float64, []float64, error) {
 
 	// Check data
 	fmt.Println("Loaded features:")
-	fmt.Printf("%2f\n", features)
+	for _, row := range features {
+		fmt.Println(row)
+	}
 	fmt.Println("Loaded target:")
-	fmt.Printf("%2f\n", target)
+	fmt.Println(target)
 	return features, target, nil
 
 }
@@ -158,7 +260,7 @@ func linearRegression(features [][]float64, target []float64) []float64 {
 	}
 
 	// Perform linear regression to calculate the coefficients
-	matFeatures := mat.NewDense(len(featuresWithConstant), len(featuresWithConstant[0]), nil)
+	matFeatures := mat.NewDense(len(features), len(featuresWithConstant[0]), nil)
 	matFeatures.Apply(func(i, j int, v float64) float64 { return featuresWithConstant[i][j] }, matFeatures)
 	matTarget := mat.NewVecDense(len(target), target)
 	coefficientsVec := mat.NewVecDense(len(coefficients), coefficients)
@@ -171,14 +273,74 @@ func linearRegression(features [][]float64, target []float64) []float64 {
 	return coefficients
 }
 
-func predict(featureRow []float64, coefficients []float64) float64 {
-	if len(featureRow)+1 != len(coefficients) {
+func ridgeRegression(features [][]float64, target []float64, lambda float64) []float64 {
+	numFeatures := len(features[0])
+	coefficients := make([]float64, len(features[0])+1)
+
+	// Add a constant term (intercept) to the feature matrix
+	featuresWithConstant := make([][]float64, len(features))
+	for i, row := range features {
+		featuresWithConstant[i] = append([]float64{1}, row...)
+	}
+
+	// Create the design matrix
+	matFeatures := mat.NewDense(len(featuresWithConstant), len(featuresWithConstant[0]), nil)
+	matFeatures.Apply(func(i, j int, v float64) float64 { return featuresWithConstant[i][j] }, matFeatures)
+
+	// Create the target vector
+	matTarget := mat.NewVecDense(len(target), target)
+
+	// Compute X^T * X and X^T * y
+	var xtX mat.Dense
+	xtX.Mul(matFeatures.T(), matFeatures)
+
+	var xtY mat.VecDense
+	xtY.MulVec(matFeatures.T(), matTarget)
+
+	// Create the identity matrix
+	identity := mat.NewDense(numFeatures+1, numFeatures+1, nil)
+	for i := 0; i < len(featuresWithConstant[0]); i++ {
+		identity.Set(i, i, lambda)
+	}
+
+	// Add 1 to the diagonal elements of the identity matrix
+	for i := 1; i < numFeatures+1; i++ {
+		identity.Set(i, i, 1.0+lambda)
+	}
+
+	// Compute the coefficients using ridge regression formula: inv(X^T * X + λI) * X^T * y
+	var inv mat.Dense
+	inv.Inverse(identity)
+
+	var ridgeCoefficients mat.VecDense
+	ridgeCoefficients.MulVec(&inv, &xtY)
+
+	// Convert the ridgeCoefficients to a flat slice
+	for i := 0; i < numFeatures+1; i++ {
+		coefficients[i] = ridgeCoefficients.At(i, 0)
+	}
+
+	return coefficients
+}
+
+func predictLin(featureRow []float64, coefficients []float64) float64 {
+	// Add constant term (intercept) to the feature row
+	featureRowWithConstant := append([]float64{1}, featureRow...)
+	if len(featureRowWithConstant) != len(coefficients) {
 		panic("Feature row and coefficients length mismatch")
 	}
 
-	// Add a constant term (intercept) to the feature row
-	featureRowWithConstant := append([]float64{1}, featureRow...)
 	return floats.Dot(featureRowWithConstant, coefficients)
+}
+
+func predictRidge(featureRow []float64, coefficientsRidge []float64) float64 {
+	// Add a constant term (intercept) to the feature row
+	featureRowRidge := append([]float64{1}, featureRow...)
+	if len(featureRowRidge) != len(coefficientsRidge) {
+		panic("Feature row and coefficients length mismatch")
+	}
+
+	return floats.Dot(featureRowRidge, coefficientsRidge)
 }
 
 func meanAbsolutePercentageError(predictions []float64, targets []float64) float64 {
