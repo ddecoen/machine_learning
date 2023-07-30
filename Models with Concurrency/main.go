@@ -17,7 +17,7 @@ import (
 func main() {
 	startTime := time.Now()
 	// Load the data from a CSV file (or any other data source)
-	features, target, err := loadCSV("../boston.csv")
+	features, target, err := loadCSV("boston.csv")
 	if err != nil {
 		panic(err)
 	}
