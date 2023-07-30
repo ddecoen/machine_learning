@@ -13,6 +13,8 @@ Machine Learning with Go and GoRoutines
 4. Program two - Leverage Concurrency via GoRoutines 
     a. Run Linear and Ridge Regression Concurrently
     b. Compare time to run both program versions
+5. Create test code (e.g., main_test.go) to check the programs
+6. Create app
 
 ### Results and Analysis
 **Results with Concurrency**
