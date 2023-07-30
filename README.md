@@ -21,7 +21,7 @@ Machine Learning with Go and GoRoutines
 ![resultswo](Results_without_Concurrency.png)
 
 **Analysis**
-As one can see from the results above, the models run much faster concurrently. This is a good example of when concurrency (e.g., leverage GoRoutines and/or Channels) makes sense as both models only really need to share the data once it is loaded in via the ***load_csv** function. Concurrency would not be the best path if the second model was dependent on the first model for a bunch of calculations.
+As one can see from the results above, the models run much faster concurrently. This is a good example of when concurrency (e.g., leverage GoRoutines and/or Channels) makes sense as both models only really need to share the data once it is loaded in via the ***load_csv*** function. Concurrency would not be the best path if the second model was dependent on the first model for a bunch of calculations.
 
 ***Next Steps***
 It would be possible to speed up the program even more through additional use of concurrency. It would be possible to set up either channels or other GoRoutines to serve the results and/or serve the data being loaded in. I think the performance right now is pretty solid, as the nonconcurrent program clocks in around 81.61 microseconds, and the concurrent program clocks in around 59.24 mircoseconds, representing almost a 38% reducion in program run time, not bad.
