@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -199,8 +201,23 @@ func main() {
 
 }
 
+func getBasePath() (string, error) {
+	_, currentFile, _, ok := runtime.Caller(1)
+	if !ok {
+		return "", fmt.Errorf("failed to get current file path")
+	}
+	return filepath.Dir(currentFile), nil
+}
+
 func loadCSV(filename string) ([][]float64, []float64, error) {
-	file, err := os.Open(filename)
+	basePath, err := getBasePath()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	absPath := filepath.Join(basePath, filename)
+
+	file, err := os.Open(absPath)
 	if err != nil {
 		return nil, nil, err
 	}
